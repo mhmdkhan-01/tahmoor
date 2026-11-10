@@ -7,6 +7,7 @@ import Home from './Screens/Home';
 import SelectVehicle from './Screens/SelectVehicle';
 import AddPetrol from './Screens/AddPetrol';
 import AddOilChange from './Screens/AddOilChange';
+import History from './Screens/History';
 const App = () => {
   const Stack = createNativeStackNavigator();
   const sos = {
@@ -36,6 +37,11 @@ const App = () => {
           name="AddOilChange"
           component={AddOilChange}
           options={{ headerTitleAlign: 'center', title: 'Add Oil Change' }}
+        />
+        <Stack.Screen
+          name="History"
+          component={History}
+          options={{ headerTitleAlign: 'center', title: 'History' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

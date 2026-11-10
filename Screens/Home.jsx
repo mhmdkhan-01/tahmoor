@@ -5,52 +5,112 @@ import {
   Pressable,
   Modal,
   TextInput,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import React, { useEffect, useState } from 'react';
 import { Dropdown } from 'react-native-element-dropdown';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import Feather from 'react-native-vector-icons/Feather';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import db from '../Data/Database';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 const Home = ({ navigation, route }) => {
   const { sv, vhs } = route.params;
   const [selectedVehicle, setSelectedVehicle] = useState(sv);
   const [vehicles, setVehicles] = useState(vhs);
   const [petrolLogs, setPetrolLogs] = useState();
   const [initReading, setinitreading] = useState();
-  const totalPetrol = calculateTotalPetrol();
+  const [updatedReading, setUpdatedReading] = useState('');
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showOilAlert, setShowOilAlert] = useState(false);
+  const [dueKm, setDueKm] = useState(0);
+
   const currentReading = String(selectedVehicle.CURRENT_READING)
     .padStart(6, '0')
     .split('');
 
-  function calculateTotalPetrol() {
-    if (!petrolLogs) return 0;
-    let t = 0;
-    for (let i = 0; i < petrolLogs.length; i++) {
-      t += petrolLogs.LITERS;
-    }
-    return t;
-  }
   const show = selectedVehicle.CURRENT_READING == 0;
   const [isShown, setIsShown] = useState(show);
 
-  useEffect(() => {
-    db.getPetrolLog(selectedVehicle.ID, pl => {
+  const deleteVehicle = () => {
+    Alert.alert(
+      'Delete Vehicle',
+      'Are you sure you want to delete this vehicle? All of its petrol logs, oil change records, and history will be permanently deleted.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'OK',
+          style: 'destructive',
+          onPress: () => {
+            db.deleteVehicle(selectedVehicle.ID, () => {
+              navigation.replace('SelectVehicle');
+            });
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const checkOilAlert = vehicle => {
+    if (!vehicle?.ID) return;
+    db.getLatestOilLog(vehicle.ID, log => {
+      if (log) {
+        const current = Number(vehicle.CURRENT_READING) || 0;
+        const nextDue = Number(log.NEXT_DUE_READING) || 0;
+        if (current >= nextDue) {
+          setDueKm(nextDue);
+          setShowOilAlert(true);
+        } else {
+          setShowOilAlert(false);
+        }
+      }
+    });
+  };
+
+  const refreshData = vehicleId => {
+    db.getVehicles(vhs => {
+      setVehicles(vhs);
+      const selveh = vhs.find(v => v.ID == vehicleId);
+      if (selveh) {
+        setSelectedVehicle(selveh);
+        checkOilAlert(selveh);
+      }
+    });
+    db.getPetrolLog(vehicleId, pl => {
       setPetrolLogs(pl);
     });
+  };
+
+  useEffect(() => {
+    refreshData(selectedVehicle.ID);
   }, []);
 
   const saveInitialReading = () => {
     db.saveInitialReading(selectedVehicle.ID, initReading, () => {
-      db.getVehicles(vhs => {
-        setVehicles(vhs);
-        const selveh = vhs.filter(v => v.ID == selectedVehicle.ID);
-        setSelectedVehicle(selveh);
-        setIsShown(false);
-      });
+      refreshData(selectedVehicle.ID);
+      setIsShown(false);
     });
   };
+
+  const handleUpdateCurrentReading = () => {
+    if (!updatedReading) return;
+    db.updateCurrentReading(selectedVehicle.ID, updatedReading, () => {
+      refreshData(selectedVehicle.ID);
+      setShowUpdateModal(false);
+      setUpdatedReading('');
+    });
+  };
+
   return (
-    <View style={{ flex: 1, padding: 20, backgroundColor: '#F7F3FF' }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#F7F3FF' }}
+      contentContainerStyle={{ padding: 20 }}
+    >
       <Dropdown
         style={style.dropdown}
         containerStyle={style.dropdownContainer}
@@ -62,9 +122,13 @@ const Home = ({ navigation, route }) => {
         labelField="NAME"
         valueField="ID"
         value={selectedVehicle}
-        onChange={item => setSelectedVehicle(item)}
+        onChange={item => {
+          setSelectedVehicle(item);
+          refreshData(item.ID);
+        }}
       />
-      <View style={style.meterbg}>
+
+      <Pressable style={style.meterbg} onPress={() => setShowUpdateModal(true)}>
         <View style={style.meter}>
           {currentReading.map((i, index) => {
             return (
@@ -75,39 +139,43 @@ const Home = ({ navigation, route }) => {
           })}
         </View>
         <Text style={style.kmText}>km</Text>
+      </Pressable>
+
+      <View style={style.readingHeaderRow}>
+        <Text style={style.readingTitleText}>Current Reading</Text>
+        <Pressable
+          style={style.editReadingIconBtn}
+          onPress={() => setShowUpdateModal(true)}
+        >
+          <Feather name="edit-3" size={16} color="#491080" />
+        </Pressable>
       </View>
-      <Text
-        style={{
-          textAlign: 'center',
-          marginVertical: 10,
-          fontWeight: 'bold',
-          fontSize: 16,
-        }}
-      >
-        Current Reading
-      </Text>
+
       <View style={style.mileagebg}>
         <FontAwesome6 name="gas-pump" size={20} color="#491080" />
         <View style={style.mileagetxtcont}>
           <Text style={style.mileagelbl}>Mileage</Text>
           <Text style={style.mileagetxt}>
             {' '}
-            {petrolLogs
-              ? petrolLogs.MILEAGE
-                ? petrolLogs.MILEAGE
+            {selectedVehicle
+              ? selectedVehicle.MILEAGE
+                ? Number(selectedVehicle.MILEAGE).toFixed(2)
                 : '0'
               : 'Loading...'}{' '}
             KM/L
           </Text>
         </View>
       </View>
+
       <View style={style.costpetrolbg}>
         <View style={style.detailbox}>
           <View style={style.detailtop}>
             <FontAwesome6 name="droplet" size={20} color="#F5B942" />
             <Text style={style.detaillbl}>Total Petrol</Text>
           </View>
-          <Text style={style.detailtxt}>{totalPetrol} L</Text>
+          <Text style={style.detailtxt}>
+            {selectedVehicle.TOTAL_PETROL_LITERS} L
+          </Text>
         </View>
         <View style={style.detailbox}>
           <View style={style.detailtop}>
@@ -115,16 +183,24 @@ const Home = ({ navigation, route }) => {
             <Text style={style.detaillbl}>Total Cost</Text>
           </View>
           <Text style={style.detailtxt}>
-            RS.
-            {petrolLogs ? petrolLogs.TOTAL_COST ?? '0' : 'Loading...'}
+            RS.{' '}
+            {selectedVehicle.TOTAL_PETROL_COST
+              ? selectedVehicle.TOTAL_PETROL_COST ?? '0'
+              : '0'}
           </Text>
         </View>
       </View>
+
       <View style={style.btnsrow}>
         <Pressable
           style={style.btn}
           onPress={() =>
-            navigation.navigate('AddPetrol', { vehicle: selectedVehicle })
+            navigation.navigate('AddPetrol', {
+              vehicle: selectedVehicle,
+              onReturn: () => {
+                refreshData(selectedVehicle.ID);
+              },
+            })
           }
         >
           <FontAwesome6 name="gas-pump" size={20} color="#FFFFFF" />
@@ -133,13 +209,41 @@ const Home = ({ navigation, route }) => {
         <Pressable
           style={style.btn}
           onPress={() => {
-            navigation.navigate('AddOilChange', { vehicle: selectedVehicle });
+            navigation.navigate('AddOilChange', {
+              vehicle: selectedVehicle,
+              onReturn: () => {
+                refreshData(selectedVehicle.ID);
+              },
+            });
           }}
         >
           <Feather name="tool" size={20} color="#FFFFFF" />
           <Text style={style.btntxt}>Add Oil Change</Text>
         </Pressable>
       </View>
+
+      <Pressable
+        style={style.historyBtn}
+        onPress={() =>
+          navigation.navigate('History', {
+            vehicle: selectedVehicle,
+          })
+        }
+      >
+        <Feather name="clock" size={20} color="#491080" />
+        <Text style={style.historyBtnTxt}>View History</Text>
+      </Pressable>
+      <Pressable
+        style={[style.historyBtn, { backgroundColor: '#ffd3d3' }]}
+        onPress={() => {
+          deleteVehicle();
+        }}
+      >
+        <MaterialIcons name="delete" size={20} color="crimson" />
+        <Text style={[style.historyBtnTxt, { color: 'crimson' }]}>
+          Delete Vehicle
+        </Text>
+      </Pressable>
       <Modal visible={isShown} transparent animationType="fade">
         <View style={style.modalOverlay}>
           <View style={style.modalinner}>
@@ -164,9 +268,67 @@ const Home = ({ navigation, route }) => {
           </View>
         </View>
       </Modal>
-    </View>
+
+      <Modal visible={showUpdateModal} transparent animationType="fade">
+        <View style={style.modalOverlay}>
+          <View style={style.modalinner}>
+            <Text style={style.modallbl}>Update Current Reading</Text>
+            <TextInput
+              style={style.modalInput}
+              value={updatedReading}
+              onChangeText={setUpdatedReading}
+              placeholder={String(selectedVehicle.CURRENT_READING)}
+              placeholderTextColor="#6A5683"
+              keyboardType="numeric"
+            />
+            <View style={style.modalBtnRow}>
+              <Pressable
+                style={[style.saveinitialreadingbtn, style.cancelModalBtn]}
+                onPress={() => setShowUpdateModal(false)}
+              >
+                <Text style={style.cancelModalBtnTxt}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[style.saveinitialreadingbtn, style.confirmModalBtn]}
+                onPress={handleUpdateCurrentReading}
+              >
+                <Text style={style.saveinitialreadingbtntxt}>Update</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showOilAlert} transparent animationType="fade">
+        <View style={style.oilModalOverlay}>
+          <View style={style.oilModalContainer}>
+            <MaterialCommunityIcons
+              name="oil-can"
+              size={48}
+              color="#F5B942"
+              style={{ marginBottom: 12 }}
+            />
+            <Text style={style.oilModalTitle}>Oil Change Due!</Text>
+            <Text style={style.oilModalSubtext}>
+              Your vehicle has reached{' '}
+              <Text style={{ fontWeight: '800' }}>
+                {Number(dueKm).toLocaleString()} km
+              </Text>
+              . Please change the oil.
+            </Text>
+            <Pressable
+              style={style.oilModalBtn}
+              onPress={() => setShowOilAlert(false)}
+            >
+              <Text style={style.oilModalBtnTxt}>OK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
   );
 };
+
 const style = StyleSheet.create({
   // Main Outer Card Container (Rounded slate/lavender background)
   meterbg: {
@@ -225,6 +387,24 @@ const style = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
+
+  // Current Reading title container with edit button
+  readingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
+  },
+  readingTitleText: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    color: '#241536',
+  },
+  editReadingIconBtn: {
+    marginLeft: 8,
+    padding: 4,
+  },
+
   // Outer Card Container (Light lavender card)
   mileagebg: {
     flexDirection: 'row',
@@ -258,6 +438,7 @@ const style = StyleSheet.create({
     fontWeight: '800',
     color: '#241536',
   },
+
   costpetrolbg: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -300,12 +481,13 @@ const style = StyleSheet.create({
     fontWeight: '800',
     color: '#241536',
   },
+
   // Container row holding both action buttons
   btnsrow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   // Individual action button (48% width)
@@ -332,6 +514,27 @@ const style = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 8,
   },
+
+  // History action button
+  historyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    backgroundColor: '#E9DCFF',
+    borderRadius: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#E3D7F7',
+    marginBottom: 16,
+  },
+  historyBtnTxt: {
+    color: '#491080',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+
   // Main Dropdown Container Pill
   dropdown: {
     height: 50,
@@ -378,6 +581,7 @@ const style = StyleSheet.create({
     fontWeight: '600',
     color: '#241536',
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(36, 21, 54, 0.5)', // Dimmed dark purple overlay
@@ -429,6 +633,12 @@ const style = StyleSheet.create({
     marginBottom: 20,
   },
 
+  modalBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+
   // Save action button
   saveinitialreadingbtn: {
     width: '100%',
@@ -444,11 +654,94 @@ const style = StyleSheet.create({
     shadowRadius: 6,
   },
 
+  cancelModalBtn: {
+    width: '48%',
+    backgroundColor: '#E9DCFF',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+
+  confirmModalBtn: {
+    width: '48%',
+  },
+
   // Save button text
   saveinitialreadingbtntxt: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
+
+  cancelModalBtnTxt: {
+    color: '#491080',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Oil Alert Modal Overlay
+  oilModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(36, 21, 54, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+
+  // Oil Alert Container Card
+  oilModalContainer: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3D7F7',
+    elevation: 5,
+    shadowColor: '#491080',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+
+  // Oil Alert Title
+  oilModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#241536',
+    marginBottom: 8,
+  },
+
+  // Oil Alert Subtext
+  oilModalSubtext: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#241536',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+
+  // Oil Alert Button
+  oilModalBtn: {
+    width: '100%',
+    backgroundColor: '#491080',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#491080',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+
+  // Oil Alert Button Text
+  oilModalBtnTxt: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
+
 export default Home;

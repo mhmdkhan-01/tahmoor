@@ -5,20 +5,52 @@ import {
   StyleSheet,
   TextInput,
   Pressable,
+  Alert,
 } from 'react-native';
-import React from 'react';
+import React, { useState } from 'react';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
+import db from '../Data/Database';
 
 const AddPetrol = ({ navigation, route }) => {
-  const { vehicle } = route.params;
+  const { vehicle, onReturn } = route.params;
   const images = {
     Bike: require('../images/bike.png'),
     Car: require('../images/car.png'),
   };
-  const currentReading = String(vehicle.CURRENT_READING)
-    .padStart(6, '0')
-    .split('');
+  const [newReading, setNewReading] = useState();
+  const [petrolAmount, setPetrolAmount] = useState();
+  const [pricePerLiter, setPricePerLiter] = useState();
   console.log(vehicle);
+  const addPetrolLog = () => {
+    if (!newReading || !petrolAmount || !pricePerLiter) return;
+    if (newReading < vehicle.CURRENT_READING) {
+      Alert.alert('Enter Greater New Reading');
+      return;
+    }
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    let totalprice = Number(petrolAmount) * Number(pricePerLiter);
+    db.addPetrolLog(
+      vehicle.ID,
+      `${day}-${month}-${year}`,
+      vehicle.CURRENT_READING,
+      newReading,
+      petrolAmount,
+      totalprice,
+      pricePerLiter,
+      vehicle,
+      () => {
+        setNewReading();
+        setPetrolAmount();
+        setPricePerLiter();
+        Alert.alert('Message', 'Added Successfully');
+        navigation.goBack();
+        onReturn();
+      },
+    );
+  };
   return (
     <View style={style.mainScreen}>
       <View style={style.vehicleCard}>
@@ -32,33 +64,57 @@ const AddPetrol = ({ navigation, route }) => {
         <Text style={style.sectionHeader}>Current Meter Reading</Text>
         <View style={style.meterbg}>
           <View style={style.meter}>
-            {currentReading.map((i, index) => {
-              return (
-                <View style={style.meterUnit} key={index}>
-                  <Text style={style.meterTxt}>{i}</Text>
-                </View>
-              );
-            })}
+            {String(vehicle.CURRENT_READING)
+              .padStart(6, '0')
+              .split('')
+              .map((i, index) => {
+                return (
+                  <View style={style.meterUnit} key={index}>
+                    <Text style={style.meterTxt}>{i}</Text>
+                  </View>
+                );
+              })}
           </View>
           <Text style={style.kmText}>km</Text>
+        </View>
+        <View style={style.inpmaincont}>
+          <Text style={style.inptlbl}>New Reading</Text>
+          <View style={style.inptrow}>
+            <FontAwesome6 name="meter" size={20} color="#491080" />
+            <TextInput
+              style={style.inptbx}
+              onChangeText={setNewReading}
+              keyboardType="numeric"
+            />
+            <Text style={style.inptUnit}>123</Text>
+          </View>
         </View>
         <View style={style.inpmaincont}>
           <Text style={style.inptlbl}>Petrol Amount</Text>
           <View style={style.inptrow}>
             <FontAwesome6 name="gas-pump" size={20} color="#491080" />
-            <TextInput style={style.inptbx} />
+            <TextInput
+              style={style.inptbx}
+              onChangeText={setPetrolAmount}
+              keyboardType="numeric"
+            />
             <Text style={style.inptUnit}>L</Text>
           </View>
         </View>
+
         <View style={style.inpmaincont}>
           <Text style={style.inptlbl}>Price Per Liter</Text>
           <View style={style.inptrow}>
             <FontAwesome6 name="dollar-sign" size={20} color="#491080" />
-            <TextInput style={style.inptbx} />
+            <TextInput
+              style={style.inptbx}
+              onChangeText={setPricePerLiter}
+              keyboardType="numeric"
+            />
             <Text style={style.inptUnit}>RS.</Text>
           </View>
         </View>
-        <Pressable style={style.savebtn}>
+        <Pressable style={style.savebtn} onPress={addPetrolLog}>
           <Text style={style.savebtntxt}>Save Petrol</Text>
         </Pressable>
       </View>

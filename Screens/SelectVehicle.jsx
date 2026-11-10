@@ -27,8 +27,9 @@ const SelectVehicle = ({ navigation }) => {
 
   const saveVehicle = () => {
     if (!vehicleName) return;
-    db.addVehicle(vehicleName, type, v => {
+    db.addVehicle(vehicleName, type, 0, v => {
       setVehicles(v);
+      setShown(false);
     });
   };
   const modal = () => {
